@@ -189,6 +189,11 @@ label span {
   text-transform: uppercase;
 }
 
+.fieldHint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 input,
 select,
 textarea {

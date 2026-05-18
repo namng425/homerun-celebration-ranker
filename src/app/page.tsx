@@ -38,6 +38,17 @@ function isGifUrl(url: string) {
   return /\.gif($|\?)/i.test(url);
 }
 
+function matchesTeamSearch(team: Pick<TeamViewModel, "name" | "city" | "nickname" | "abbreviation" | "id">, query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  return [team.name, team.city, team.nickname, team.abbreviation, team.id.replaceAll("-", " ")].some((value) =>
+    value.toLowerCase().includes(normalized),
+  );
+}
+
 function AnimatedMedia({ media, className = "" }: { media?: CelebrationMedia; className?: string }) {
   if (!media) {
     return (
@@ -79,6 +90,7 @@ export default function Home() {
   const [{ voterId, voterName }, setVoter] = useState({ voterId: "", voterName: anonymousName });
   const [nameDraft, setNameDraft] = useState(anonymousName);
   const [isSaving, setIsSaving] = useState(false);
+  const [teamPickerQuery, setTeamPickerQuery] = useState("");
   const [mediaDraft, setMediaDraft] = useState({
     teamId: "",
     title: "",
@@ -130,15 +142,9 @@ export default function Home() {
   }, [state?.votes, voterId]);
 
   const filteredTeams = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
     return [...(state?.teams ?? [])]
       .filter((team) => {
-        const matchesSearch =
-          !normalized ||
-          team.name.toLowerCase().includes(normalized) ||
-          team.city.toLowerCase().includes(normalized) ||
-          team.nickname.toLowerCase().includes(normalized) ||
-          team.abbreviation.toLowerCase().includes(normalized);
+        const matchesSearch = matchesTeamSearch(team, query);
         const matchesLeague = league === "all" || team.league === league;
         const matchesDivision = division === "all" || team.division === division;
         const matchesMedia =
@@ -163,6 +169,11 @@ export default function Home() {
         return (b.score.averageScore ?? -1) - (a.score.averageScore ?? -1) || b.score.voteCount - a.score.voteCount || a.name.localeCompare(b.name);
       });
   }, [division, league, mediaFilter, query, sortMode, state?.teams]);
+
+  const filteredContributionTeams = useMemo(
+    () => (state?.teams ?? []).filter((team) => matchesTeamSearch(team, teamPickerQuery)),
+    [state?.teams, teamPickerQuery],
+  );
 
   const bestTeams = useMemo(
     () => [...(state?.teams ?? [])].filter((team) => team.score.averageScore !== null).sort((a, b) => (a.score.rankBest ?? 999) - (b.score.rankBest ?? 999)).slice(0, 5),
@@ -219,6 +230,7 @@ export default function Home() {
         throw new Error(body.error ?? "Could not save media.");
       }
       setMediaDraft({ teamId: "", title: "", mediaUrl: "", sourceUrl: "", attribution: "", description: "", season: "2026" });
+      setTeamPickerQuery("");
       setShowContribute(false);
       await loadState();
     } catch (mediaError) {
@@ -234,7 +246,18 @@ export default function Home() {
       teamId: team?.id ?? current.teamId,
       title: team?.primaryMedia?.title ?? "",
     }));
+    if (team) {
+      setTeamPickerQuery(team.name);
+    }
     setShowContribute(true);
+  }
+
+  function updateTeamPickerQuery(value: string) {
+    setTeamPickerQuery(value);
+    const matches = (state?.teams ?? []).filter((team) => matchesTeamSearch(team, value));
+    if (matches.length === 1) {
+      setMediaDraft((draft) => ({ ...draft, teamId: matches[0].id }));
+    }
   }
 
   return (
@@ -395,15 +418,22 @@ export default function Home() {
               <p>Paste an animated GIF URL for immediate animated preview support. External links are saved with attribution.</p>
             </div>
             <label>
+              <span>Find team</span>
+              <input value={teamPickerQuery} onChange={(event) => updateTeamPickerQuery(event.target.value)} placeholder="Try Mets, Yankees, NYY..." />
+            </label>
+            <label>
               <span>Team</span>
               <select required value={mediaDraft.teamId} onChange={(event) => setMediaDraft((draft) => ({ ...draft, teamId: event.target.value }))}>
-                <option value="">Select a team</option>
-                {(state?.teams ?? []).map((team) => (
+                <option value="">{filteredContributionTeams.length ? "Select a team" : "No matching teams"}</option>
+                {filteredContributionTeams.map((team) => (
                   <option key={team.id} value={team.id}>
                     {team.name}
                   </option>
                 ))}
               </select>
+              <small className="fieldHint">
+                {filteredContributionTeams.length} {filteredContributionTeams.length === 1 ? "team" : "teams"} match your search.
+              </small>
             </label>
             <label>
               <span>Celebration title</span>
