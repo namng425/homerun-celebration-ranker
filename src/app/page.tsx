@@ -178,8 +178,6 @@ export default function Home() {
     () => (state?.teams ?? []).filter((team) => matchesTeamSearch(team, teamPickerQuery)),
     [state?.teams, teamPickerQuery],
   );
-  const showMainSearchResults = query.trim().length > 0;
-  const mainSearchSuggestions = showMainSearchResults ? filteredTeams.slice(0, 6) : [];
 
   const bestTeams = useMemo(
     () => [...(state?.teams ?? [])].filter((team) => team.score.averageScore !== null).sort((a, b) => (a.score.rankBest ?? 999) - (b.score.rankBest ?? 999)).slice(0, 5),
@@ -275,11 +273,6 @@ export default function Home() {
     }
   }
 
-  function selectMainSearchTeam(team: TeamViewModel) {
-    updateMainSearch(team.name);
-    setSelectedTeam(team);
-  }
-
   return (
     <main className="appShell">
       <section className="hero">
@@ -304,28 +297,12 @@ export default function Home() {
       {error && <div className="errorBanner">{error}</div>}
 
       <section className="controlPanel" aria-label="Search and filters">
-        <label className="frontSearch">
+        <label>
           <span>Search</span>
           <input value={query} onChange={(event) => updateMainSearch(event.target.value)} placeholder="Try Mets, Yankees, NYY..." />
           <small className="fieldHint">
             {filteredTeams.length} {filteredTeams.length === 1 ? "team" : "teams"} match your search.
           </small>
-          {showMainSearchResults && (
-            <div className="searchSuggestions" aria-label="Search suggestions">
-              {mainSearchSuggestions.length ? (
-                mainSearchSuggestions.map((team) => (
-                  <button key={team.id} type="button" onClick={() => selectMainSearchTeam(team)}>
-                    <strong>{team.name}</strong>
-                    <span>
-                      {team.league} {team.division} · {team.abbreviation}
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <p>No teams match your search.</p>
-              )}
-            </div>
-          )}
         </label>
         <label>
           <span>League</span>

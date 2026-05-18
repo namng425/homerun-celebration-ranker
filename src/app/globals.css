@@ -182,10 +182,6 @@ label {
   gap: 7px;
 }
 
-.frontSearch {
-  position: relative;
-}
-
 label span {
   color: var(--muted);
   font-size: 0.78rem;
@@ -208,53 +204,6 @@ textarea {
   background: var(--surface);
   color: var(--text);
   padding: 10px 12px;
-}
-
-.searchSuggestions {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  left: 0;
-  z-index: 5;
-  display: grid;
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
-}
-
-.searchSuggestions button,
-.searchSuggestions p {
-  margin: 0;
-  border: 0;
-  border-radius: 10px;
-  background: var(--surface-soft);
-  color: var(--text);
-  padding: 10px 12px;
-  text-align: left;
-}
-
-.searchSuggestions button {
-  display: grid;
-  gap: 2px;
-}
-
-.searchSuggestions button:hover {
-  background: var(--accent-soft);
-}
-
-.searchSuggestions strong {
-  font-size: 0.95rem;
-}
-
-.searchSuggestions span {
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 textarea {
