@@ -1,5 +1,6 @@
 "use client";
 
+import { upload } from "@vercel/blob/client";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { CelebrationMedia, Division, League, TeamViewModel, Vote } from "@/lib/types";
 
@@ -14,6 +15,15 @@ type SortMode = "highest" | "lowest" | "votes" | "team" | "updated";
 type MediaFilter = "all" | "has" | "missing";
 
 const anonymousName = "Guest voter";
+const emptyMediaDraft = {
+  teamId: "",
+  title: "",
+  mediaUrl: "",
+  sourceUrl: "",
+  attribution: "",
+  description: "",
+  season: "2026",
+};
 
 function getVoter() {
   if (typeof window === "undefined") {
@@ -36,6 +46,14 @@ function scoreLabel(score: number | null) {
 
 function isGifUrl(url: string) {
   return /\.gif($|\?)/i.test(url);
+}
+
+function isGifFile(file: File) {
+  return file.type === "image/gif" || /\.gif$/i.test(file.name);
+}
+
+function safeUploadName(name: string) {
+  return name.toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "") || "celebration.gif";
 }
 
 function normalizeSearch(value: string) {
@@ -64,7 +82,7 @@ function AnimatedMedia({ media, className = "" }: { media?: CelebrationMedia; cl
   }
 
   const alt = `${media.title} animated home run celebration`;
-  if (isGifUrl(media.mediaUrl)) {
+  if (media.mediaType === "gif_url" || media.mediaType === "uploaded_gif" || isGifUrl(media.mediaUrl)) {
     // Use a plain img so animated GIF previews keep animating instead of being optimized into static assets.
     // eslint-disable-next-line @next/next/no-img-element
     return <img className={`animatedMedia ${className}`} src={media.mediaUrl} alt={alt} loading="lazy" />;
@@ -95,15 +113,9 @@ export default function Home() {
   const [nameDraft, setNameDraft] = useState(anonymousName);
   const [isSaving, setIsSaving] = useState(false);
   const [teamPickerQuery, setTeamPickerQuery] = useState("");
-  const [mediaDraft, setMediaDraft] = useState({
-    teamId: "",
-    title: "",
-    mediaUrl: "",
-    sourceUrl: "",
-    attribution: "",
-    description: "",
-    season: "2026",
-  });
+  const [selectedGifFile, setSelectedGifFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [mediaDraft, setMediaDraft] = useState(emptyMediaDraft);
 
   async function loadState() {
     setIsLoading(true);
@@ -178,6 +190,15 @@ export default function Home() {
     () => (state?.teams ?? []).filter((team) => matchesTeamSearch(team, teamPickerQuery)),
     [state?.teams, teamPickerQuery],
   );
+  const selectedGifPreviewUrl = useMemo(() => (selectedGifFile ? URL.createObjectURL(selectedGifFile) : ""), [selectedGifFile]);
+
+  useEffect(() => {
+    return () => {
+      if (selectedGifPreviewUrl) {
+        URL.revokeObjectURL(selectedGifPreviewUrl);
+      }
+    };
+  }, [selectedGifPreviewUrl]);
 
   const bestTeams = useMemo(
     () => [...(state?.teams ?? [])].filter((team) => team.score.averageScore !== null).sort((a, b) => (a.score.rankBest ?? 999) - (b.score.rankBest ?? 999)).slice(0, 5),
@@ -223,19 +244,45 @@ export default function Home() {
     event.preventDefault();
     setIsSaving(true);
     setError("");
+    setUploadProgress(null);
     try {
+      let mediaUrl = mediaDraft.mediaUrl.trim();
+      let mediaType: CelebrationMedia["mediaType"] = isGifUrl(mediaUrl) ? "gif_url" : "external_link";
+
+      if (selectedGifFile) {
+        if (!isGifFile(selectedGifFile)) {
+          throw new Error("Please upload an animated GIF file.");
+        }
+        if (!mediaDraft.teamId) {
+          throw new Error("A valid team is required.");
+        }
+
+        const safeName = safeUploadName(selectedGifFile.name);
+        const blob = await upload(`celebrations/${mediaDraft.teamId}/${Date.now()}-${safeName}`, selectedGifFile, {
+          access: "public",
+          contentType: selectedGifFile.type || "image/gif",
+          handleUploadUrl: "/api/blob/upload",
+          multipart: true,
+          onUploadProgress: ({ percentage }) => setUploadProgress(percentage),
+        });
+        mediaUrl = blob.url;
+        mediaType = "uploaded_gif";
+      }
+
+      if (!mediaUrl) {
+        throw new Error("Upload a GIF file or paste a media URL.");
+      }
+
       const response = await fetch("/api/media", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...mediaDraft, mediaType: isGifUrl(mediaDraft.mediaUrl) ? "gif_url" : "external_link", isPrimary: true }),
+        body: JSON.stringify({ ...mediaDraft, mediaUrl, mediaType, isPrimary: true }),
       });
       if (!response.ok) {
         const body = (await response.json()) as { error?: string };
         throw new Error(body.error ?? "Could not save media.");
       }
-      setMediaDraft({ teamId: "", title: "", mediaUrl: "", sourceUrl: "", attribution: "", description: "", season: "2026" });
-      setTeamPickerQuery("");
-      setShowContribute(false);
+      closeContribution();
       await loadState();
     } catch (mediaError) {
       setError(mediaError instanceof Error ? mediaError.message : "Could not save media.");
@@ -256,6 +303,14 @@ export default function Home() {
     setShowContribute(true);
   }
 
+  function closeContribution() {
+    setMediaDraft(emptyMediaDraft);
+    setTeamPickerQuery("");
+    setSelectedGifFile(null);
+    setUploadProgress(null);
+    setShowContribute(false);
+  }
+
   function updateTeamPickerQuery(value: string) {
     setTeamPickerQuery(value);
     const matches = (state?.teams ?? []).filter((team) => matchesTeamSearch(team, value));
@@ -270,6 +325,23 @@ export default function Home() {
       setLeague("all");
       setDivision("all");
       setMediaFilter("all");
+    }
+  }
+
+  function updateSelectedGifFile(file: File | null) {
+    if (file && !isGifFile(file)) {
+      setError("Please choose a .gif file.");
+      setSelectedGifFile(null);
+      return;
+    }
+    setError("");
+    setSelectedGifFile(file);
+    if (file) {
+      setMediaDraft((draft) => ({
+        ...draft,
+        mediaUrl: "",
+        title: draft.title || file.name.replace(/\.gif$/i, "").replaceAll("-", " "),
+      }));
     }
   }
 
@@ -426,13 +498,13 @@ export default function Home() {
       {showContribute && (
         <div className="modalBackdrop" role="dialog" aria-modal="true" aria-label="Add celebration media">
           <form className="contributeModal" onSubmit={submitMedia}>
-            <button className="closeButton" type="button" onClick={() => setShowContribute(false)} aria-label="Close contribution form">
+            <button className="closeButton" type="button" onClick={closeContribution} aria-label="Close contribution form">
               ×
             </button>
             <div>
               <p className="eyebrow">Media contribution</p>
               <h2>Add or update a celebration</h2>
-              <p>Paste an animated GIF URL for immediate animated preview support. External links are saved with attribution.</p>
+              <p>Upload an animated GIF or paste a GIF/media URL. Uploaded GIFs are stored with Vercel Blob.</p>
             </div>
             <label>
               <span>Find team</span>
@@ -457,16 +529,34 @@ export default function Home() {
               <input required value={mediaDraft.title} onChange={(event) => setMediaDraft((draft) => ({ ...draft, title: event.target.value }))} />
             </label>
             <label>
+              <span>Upload GIF</span>
+              <input type="file" accept="image/gif,.gif" onChange={(event) => updateSelectedGifFile(event.target.files?.[0] ?? null)} />
+              <small className="fieldHint">Use a .gif file for animated previews. Larger files upload directly to storage.</small>
+            </label>
+            <label>
               <span>GIF or media URL</span>
-              <input required type="url" value={mediaDraft.mediaUrl} onChange={(event) => setMediaDraft((draft) => ({ ...draft, mediaUrl: event.target.value }))} placeholder="https://.../celebration.gif" />
+              <input type="url" value={mediaDraft.mediaUrl} onChange={(event) => setMediaDraft((draft) => ({ ...draft, mediaUrl: event.target.value }))} placeholder="https://.../celebration.gif" disabled={Boolean(selectedGifFile)} />
+              {selectedGifFile && <small className="fieldHint">Using uploaded file: {selectedGifFile.name}</small>}
             </label>
             <div className="previewBox">
               <AnimatedMedia
                 media={
-                  mediaDraft.mediaUrl
+                  selectedGifPreviewUrl
                     ? {
-                        id: "draft",
+                        id: "draft-upload",
                         teamId: mediaDraft.teamId,
+                        title: mediaDraft.title || selectedGifFile?.name || "Uploaded celebration",
+                        mediaUrl: selectedGifPreviewUrl,
+                        mediaType: "uploaded_gif",
+                        isPrimary: true,
+                        status: "active",
+                        createdAt: "",
+                        updatedAt: "",
+                      }
+                    : mediaDraft.mediaUrl
+                      ? {
+                          id: "draft",
+                          teamId: mediaDraft.teamId,
                         title: mediaDraft.title || "Draft celebration",
                         mediaUrl: mediaDraft.mediaUrl,
                         mediaType: isGifUrl(mediaDraft.mediaUrl) ? "gif_url" : "external_link",
@@ -475,7 +565,7 @@ export default function Home() {
                         createdAt: "",
                         updatedAt: "",
                       }
-                    : undefined
+                      : undefined
                 }
               />
             </div>
@@ -492,7 +582,7 @@ export default function Home() {
               <textarea value={mediaDraft.description} onChange={(event) => setMediaDraft((draft) => ({ ...draft, description: event.target.value }))} />
             </label>
             <button className="primaryButton" type="submit" disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save celebration"}
+              {isSaving ? (uploadProgress !== null ? `Uploading ${Math.round(uploadProgress)}%...` : "Saving...") : "Save celebration"}
             </button>
           </form>
         </div>
