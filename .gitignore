@@ -1,0 +1,11 @@
+.next/
+node_modules/
+out/
+build/
+dist/
+.vercel/
+*.log
+.env
+.env*.local
+data/app-state.json
+
