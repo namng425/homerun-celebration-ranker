@@ -158,9 +158,9 @@ export default function Home() {
           return (b.primaryMedia?.updatedAt ?? "").localeCompare(a.primaryMedia?.updatedAt ?? "") || a.name.localeCompare(b.name);
         }
         if (sortMode === "lowest") {
-          return (a.score.averageScore ?? 99) - (b.score.averageScore ?? 99) || b.score.voteCount - a.score.voteCount;
+          return (a.score.averageScore ?? 99) - (b.score.averageScore ?? 99) || b.score.voteCount - a.score.voteCount || a.name.localeCompare(b.name);
         }
-        return (b.score.averageScore ?? -1) - (a.score.averageScore ?? -1) || b.score.voteCount - a.score.voteCount;
+        return (b.score.averageScore ?? -1) - (a.score.averageScore ?? -1) || b.score.voteCount - a.score.voteCount || a.name.localeCompare(b.name);
       });
   }, [division, league, mediaFilter, query, sortMode, state?.teams]);
 
