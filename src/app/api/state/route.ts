@@ -11,7 +11,10 @@ export async function GET() {
     teams: buildTeamViewModels(state),
     media: state.media,
     votes: state.votes,
-    persistence: process.env.UPSTASH_REDIS_REST_URL ? "redis" : "local-file",
+    persistence:
+      process.env.UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDIS_REST_KV_REST_API_URL || process.env.KV_REST_API_URL
+        ? "redis"
+        : "local-file",
   });
 }
 

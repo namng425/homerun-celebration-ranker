@@ -10,15 +10,29 @@ const initialState: AppState = {
   votes: [],
 };
 
+function redisUrl() {
+  return process.env.UPSTASH_REDIS_REST_URL ?? process.env.UPSTASH_REDIS_REST_KV_REST_API_URL ?? process.env.KV_REST_API_URL;
+}
+
+function redisToken() {
+  return process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN ?? process.env.KV_REST_API_TOKEN;
+}
+
 function redisConfigured() {
-  return Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+  return Boolean(redisUrl() && redisToken());
 }
 
 async function redisRequest<T>(command: unknown[]): Promise<T> {
-  const response = await fetch(`${process.env.UPSTASH_REDIS_REST_URL}/pipeline`, {
+  const url = redisUrl();
+  const token = redisToken();
+  if (!url || !token) {
+    throw new Error("Redis is not configured.");
+  }
+
+  const response = await fetch(`${url}/pipeline`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify([command]),
