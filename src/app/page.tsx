@@ -38,14 +38,18 @@ function isGifUrl(url: string) {
   return /\.gif($|\?)/i.test(url);
 }
 
+function normalizeSearch(value: string) {
+  return value.trim().toLowerCase().replaceAll("-", " ");
+}
+
 function matchesTeamSearch(team: Pick<TeamViewModel, "name" | "city" | "nickname" | "abbreviation" | "id">, query: string) {
-  const normalized = query.trim().toLowerCase();
+  const normalized = normalizeSearch(query);
   if (!normalized) {
     return true;
   }
 
   return [team.name, team.city, team.nickname, team.abbreviation, team.id.replaceAll("-", " ")].some((value) =>
-    value.toLowerCase().includes(normalized),
+    normalizeSearch(value).includes(normalized),
   );
 }
 
@@ -260,6 +264,15 @@ export default function Home() {
     }
   }
 
+  function updateMainSearch(value: string) {
+    setQuery(value);
+    if (value.trim()) {
+      setLeague("all");
+      setDivision("all");
+      setMediaFilter("all");
+    }
+  }
+
   return (
     <main className="appShell">
       <section className="hero">
@@ -286,7 +299,10 @@ export default function Home() {
       <section className="controlPanel" aria-label="Search and filters">
         <label>
           <span>Search</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Team, city, nickname..." />
+          <input value={query} onChange={(event) => updateMainSearch(event.target.value)} placeholder="Try Mets, Yankees, NYY..." />
+          <small className="fieldHint">
+            {filteredTeams.length} {filteredTeams.length === 1 ? "team" : "teams"} match your search.
+          </small>
         </label>
         <label>
           <span>League</span>
@@ -372,6 +388,7 @@ export default function Home() {
                 </div>
               </article>
             ))}
+          {!isLoading && filteredTeams.length === 0 && <div className="loadingCard">No teams match your search.</div>}
         </section>
       </section>
 
